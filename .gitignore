@@ -1,0 +1,4 @@
+.env
+__pycache__/
+*.pyc
+esp32/.pio/

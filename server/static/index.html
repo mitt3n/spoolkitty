@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spoolman Kitty</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#1d1d1b;--mute:#6b6a66;--line:#e4e2dc;--accent:#2f6f5e;--accent-ink:#fff;--warn:#a15c00;--bad:#b3261e;--good:#2f7d32;--chip:#efede7}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--card:#1f1f1d;--ink:#ecebe7;--mute:#9d9b95;--line:#33322f;--accent:#6fc2a8;--accent-ink:#0d1f1a;--warn:#e0a84d;--bad:#f08a80;--good:#7fcf84;--chip:#2a2a27}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+h1{font-size:22px;margin:0;letter-spacing:-.01em}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:0 0 12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.full{grid-column:1/-1}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;background:var(--chip);font-size:13px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--mute);flex:none}
+.dot.ok{background:var(--good)}.dot.bad{background:var(--bad)}.dot.warn{background:var(--warn)}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:7px 12px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+button.sm{padding:3px 9px;font-size:13px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.stack>*+*{margin-top:10px}
+.mute{color:var(--mute)}
+.small{font-size:13px}
+label.toggle{display:flex;align-items:center;gap:8px;cursor:pointer}
+.notice{border:1px solid var(--warn);border-radius:10px;padding:12px;background:color-mix(in srgb,var(--warn) 10%,var(--card))}
+code{background:var(--chip);padding:1px 5px;border-radius:5px;font-size:13px;word-break:break-all}
+table{width:100%;border-collapse:collapse}
+td,th{text-align:left;padding:7px 6px;border-top:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;color:var(--mute);font-weight:600;border-top:none}
+.swatch{width:14px;height:14px;border-radius:4px;border:1px solid var(--line);display:inline-block;vertical-align:-2px}
+.badge{font-size:12px;padding:1px 7px;border-radius:99px;background:var(--chip)}
+.badge.queued{color:var(--warn)}.badge.printing{color:var(--accent)}.badge.done{color:var(--good)}.badge.failed{color:var(--bad)}
+input[type=search]{font:inherit;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+#log{font:12px/1.5 ui-monospace,Consolas,monospace;color:var(--mute);max-height:120px;overflow:auto;white-space:pre-wrap}
+.scroll{overflow-x:auto}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);padding:16px;max-width:95vw}
+dialog img{display:block;width:384px;max-width:100%;image-rendering:pixelated;background:#fff;border:1px dashed var(--line)}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Spoolman Kitty</h1>
+    <span class="pill" id="sm-pill"><span class="dot"></span><span>Spoolman…</span></span>
+  </header>
+
+  <div class="grid">
+    <section class="card stack" id="bt-card">
+      <h2>This browser as printer</h2>
+      <div id="bt-unsupported" class="notice" hidden></div>
+      <div class="row">
+        <span class="pill"><span class="dot" id="bt-dot"></span><span id="bt-status">No printer</span></span>
+      </div>
+      <div class="row">
+        <button class="primary" id="btn-pair">Pair printer</button>
+        <button id="btn-disconnect" disabled>Disconnect</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="agent-on"> Print queued labels from this tab</label>
+      <label class="toggle"><input type="checkbox" id="wake"> Keep screen awake</label>
+      <div id="log"></div>
+    </section>
+
+    <section class="card stack">
+      <h2>Print agents</h2>
+      <div id="agents" class="stack small mute">None yet</div>
+      <p class="small mute">Any agent that's online and near the printer takes the next label: a browser tab like this one, or the ESP32.</p>
+    </section>
+
+    <section class="card full">
+      <h2>Queue</h2>
+      <div class="scroll"><table id="jobs"><thead><tr><th>Spool</th><th>Status</th><th>Agent</th><th>Source</th><th>When</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p id="jobs-empty" class="small mute">Nothing queued. Tick <b>Print label</b> on a spool in Spoolman, or use Print below.</p>
+    </section>
+
+    <section class="card full stack">
+      <h2>Spools</h2>
+      <input type="search" id="q" placeholder="Filter by id, material, name, vendor">
+      <div class="scroll"><table id="spools"><thead><tr><th>#</th><th>Filament</th><th>Vendor</th><th></th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </div>
+</main>
+
+<dialog id="preview">
+  <div class="stack">
+    <img id="preview-img" alt="Label preview">
+    <div class="row"><button class="primary" id="preview-print">Print</button><button onclick="preview.close()">Close</button></div>
+  </div>
+</dialog>
+
+<script>
+const SVC = '0000ae30-0000-1000-8000-00805f9b34fb';
+const SVC_ALT = '0000af30-0000-1000-8000-00805f9b34fb';
+const TX = '0000ae01-0000-1000-8000-00805f9b34fb';
+const RX = '0000ae02-0000-1000-8000-00805f9b34fb';
+const PREFIXES = ['MX05','MX06','MX08','MX09','MX10','MX11','GB0','GT01','YT01'];
+const $ = s => document.querySelector(s);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v) }catch{ return d } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)) }catch{} }
+};
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function ago(t){ const s = Math.max(0, Date.now()/1000 - t); return s < 60 ? `${s|0}s ago` : s < 3600 ? `${s/60|0}m ago` : `${s/3600|0}h ago`; }
+function log(msg){ const el = $('#log'); el.textContent = `${new Date().toLocaleTimeString()}  ${msg}\n` + el.textContent.slice(0, 4000); }
+
+// ---------------- Web Bluetooth print agent ----------------
+let agentId = store.get('agentId', null);
+if (!agentId){ agentId = 'browser-' + Math.random().toString(36).slice(2, 6); store.set('agentId', agentId); }
+let device = null, tx = null, paused = false, busy = false;
+let chunk = store.get('chunk', 180);
+
+function btStatus(text, cls){ $('#bt-status').textContent = text; $('#bt-dot').className = 'dot ' + (cls || ''); }
+function refreshButtons(){
+  $('#btn-disconnect').disabled = !(device && device.gatt.connected);
+  $('#btn-pair').textContent = device ? 'Pair a different printer' : 'Pair printer';
+}
+
+function checkSupport(){
+  const n = $('#bt-unsupported');
+  if (!window.isSecureContext){
+    n.hidden = false;
+    n.innerHTML = `Web Bluetooth needs a secure page. In Chrome or Edge, open <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>, add <code>${esc(location.origin)}</code>, set it to <b>Enabled</b>, and relaunch.`;
+    return false;
+  }
+  if (!navigator.bluetooth){
+    n.hidden = false;
+    n.innerHTML = 'This browser has no Web Bluetooth. Use Chrome or Edge on Windows, macOS, Android or ChromeOS. Firefox and iOS Safari don\'t support it.';
+    return false;
+  }
+  return true;
+}
+
+function adopt(d){
+  device = d;
+  device.addEventListener('gattserverdisconnected', () => { tx = null; btStatus(`${device.name} disconnected`, 'warn'); refreshButtons(); });
+}
+
+async function connect(){
+  if (device.gatt.connected && tx) return;
+  btStatus(`Connecting to ${device.name}…`, 'warn');
+  const server = await device.gatt.connect();
+  let svc;
+  try { svc = await server.getPrimaryService(SVC); } catch { svc = await server.getPrimaryService(SVC_ALT); }
+  tx = await svc.getCharacteristic(TX);
+  try {
+    const rx = await svc.getCharacteristic(RX);
+    await rx.startNotifications();
+    rx.addEventListener('characteristicvaluechanged', e => {
+      const v = new Uint8Array(e.target.value.buffer);
+      if (v[2] === 0xAE && v.length >= 7) paused = v[6] === 0x10;   // printer flow control
+    });
+  } catch { /* some units have no notify; pacing still applies */ }
+  btStatus(`${device.name} connected`, 'ok');
+  refreshButtons();
+}
+
+async function pair(){
+  try {
+    const d = await navigator.bluetooth.requestDevice({
+      filters: PREFIXES.map(p => ({ namePrefix: p })),
+      optionalServices: [SVC, SVC_ALT],
+    });
+    if (device && device.gatt.connected) device.gatt.disconnect();
+    adopt(d);
+    await connect();
+    $('#agent-on').checked = true; store.set('agentOn', true);
+    log(`Paired ${d.name}`);
+  } catch (e) { if (e.name !== 'NotFoundError') log('Pair failed: ' + e.message); }
+}
+
+async function restore(){
+  if (!navigator.bluetooth?.getDevices) return;
+  const known = await navigator.bluetooth.getDevices();
+  const d = known.find(d => PREFIXES.some(p => (d.name || '').toUpperCase().startsWith(p)));
+  if (d){ adopt(d); btStatus(`${d.name} remembered`, 'warn'); log(`Remembered ${d.name}; will connect when it's on`); }
+}
+
+async function writeAll(data){
+  let i = 0, first = true;
+  while (i < data.length){
+    const t0 = Date.now();
+    while (paused){ if (Date.now() - t0 > 30000) throw new Error('printer stayed paused'); await sleep(40); }
+    const part = data.slice(i, i + chunk);
+    try {
+      await tx.writeValueWithoutResponse(part);
+    } catch (e) {
+      if (first && chunk > 20){ chunk = 20; store.set('chunk', 20); log('Falling back to 20-byte writes'); continue; }
+      throw e;
+    }
+    first = false;
+    i += part.length;
+    await sleep(chunk > 20 ? 15 : 6);
+  }
+}
+
+async function agentLoop(){
+  while (true){
+    if (!$('#agent-on').checked || !device){ await sleep(1500); continue; }
+    try { await connect(); }
+    catch (e) { btStatus(`${device.name} not reachable (off or asleep?)`, 'bad'); await sleep(8000); continue; }
+    let r;
+    try {
+      r = await fetch(`api/agent/next?agent=${agentId}&kind=browser&printer=${encodeURIComponent(device.name)}&wait=20`, { cache: 'no-store' });
+    } catch { await sleep(4000); continue; }
+    if (r.status !== 200) continue;
+    const jobId = r.headers.get('X-Job-Id'), spoolId = r.headers.get('X-Spool-Id');
+    const data = new Uint8Array(await r.arrayBuffer());
+    busy = true; btStatus(`Printing spool #${spoolId}…`, 'ok');
+    let ok = 1, err = '';
+    try { await connect(); await writeAll(data); log(`Printed spool #${spoolId}`); }
+    catch (e) { ok = 0; err = e.message || String(e); log(`Spool #${spoolId} failed: ${err}`); }
+    busy = false;
+    if (device.gatt.connected) btStatus(`${device.name} connected`, 'ok');
+    await fetch(`api/agent/done?agent=${agentId}&kind=browser&job=${jobId}&ok=${ok}&error=${encodeURIComponent(err)}`, { method: 'POST' }).catch(() => {});
+    refreshState();
+  }
+}
+
+// Screen wake lock (for a phone or tablet parked by the printer)
+let wakeLock = null;
+async function applyWake(){
+  try {
+    if ($('#wake').checked && document.visibilityState === 'visible' && !wakeLock){
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => wakeLock = null);
+    } else if (!$('#wake').checked && wakeLock){ await wakeLock.release(); }
+  } catch (e) { log('Wake lock unavailable: ' + e.message); }
+}
+
+// ---------------- UI ----------------
+let spools = [];
+async function refreshState(){
+  let s;
+  try { s = await (await fetch('api/state', { cache: 'no-store' })).json(); } catch { return; }
+  const pill = $('#sm-pill');
+  pill.querySelector('.dot').className = 'dot ' + (s.spoolman.ok ? 'ok' : 'bad');
+  pill.querySelector('span:last-child').textContent = s.spoolman.ok ? 'Spoolman connected' : `Spoolman unreachable: ${s.spoolman.error}`;
+
+  $('#agents').innerHTML = s.agents.length ? s.agents.map(a => `
+    <div class="row"><span class="dot ${a.online ? 'ok' : ''}"></span>
+      <b>${esc(a.name)}${a.name === agentId ? ' (this tab)' : ''}</b>
+      <span class="mute">${esc(a.kind)} → ${a.printer ? esc(a.printer) : 'printer not in range'} · ${a.online ? 'online' : 'last seen ' + ago(a.last_seen)} · ${a.printed || 0} printed</span></div>`).join('')
+    : 'None yet. Pair a printer here or power up the ESP32.';
+
+  const tb = $('#jobs tbody');
+  $('#jobs-empty').hidden = s.jobs.length > 0;
+  tb.innerHTML = s.jobs.map(j => `
+    <tr><td>#${j.spool_id} <span class="mute small">${esc(j.label)}</span></td>
+      <td><span class="badge ${j.status}">${j.status}</span>${j.error ? `<div class="small mute">${esc(j.error)}</div>` : ''}</td>
+      <td class="small">${esc(j.agent) || '—'}</td>
+      <td class="small">${j.source}</td>
+      <td class="small mute">${ago(j.created)}</td>
+      <td>${['queued','printing'].includes(j.status)
+            ? `<button class="sm" onclick="jobAction('${j.id}','cancel')">Cancel</button>`
+            : `<button class="sm" onclick="jobAction('${j.id}','retry')">Reprint</button>`}</td></tr>`).join('');
+}
+async function jobAction(id, act){ await fetch(`api/jobs/${id}/${act}`, { method: 'POST' }); refreshState(); }
+
+async function refreshSpools(){
+  try { spools = await (await fetch('api/spools', { cache: 'no-store' })).json(); } catch { return; }
+  drawSpools();
+}
+function drawSpools(){
+  const q = $('#q').value.trim().toLowerCase();
+  const rows = spools.filter(s => !s.archived || q).filter(s => !q || `${s.id} ${s.material} ${s.name} ${s.vendor}`.toLowerCase().includes(q));
+  $('#spools tbody').innerHTML = rows.map(s => `
+    <tr><td>${s.id}</td>
+      <td>${s.color ? `<span class="swatch" style="background:#${esc(s.color)}"></span> ` : ''}<b>${esc(s.material)}</b> ${esc(s.name)}
+        ${s.flagged ? '<span class="badge queued">label requested</span>' : ''}</td>
+      <td class="mute">${esc(s.vendor)}</td>
+      <td style="white-space:nowrap"><button class="sm" onclick="showPreview(${s.id})">Preview</button>
+        <button class="sm" onclick="printSpool(${s.id})">Print</button></td></tr>`).join('');
+}
+async function printSpool(id){ await fetch(`api/print/${id}`, { method: 'POST' }); refreshState(); }
+function showPreview(id){
+  $('#preview-img').src = `api/label/${id}.png?t=${Date.now()}`;
+  $('#preview-print').onclick = () => { printSpool(id); preview.close(); };
+  preview.showModal();
+}
+
+// ---------------- boot ----------------
+$('#q').addEventListener('input', drawSpools);
+$('#btn-pair').onclick = pair;
+$('#btn-disconnect').onclick = () => { $('#agent-on').checked = false; store.set('agentOn', false); device?.gatt.disconnect(); };
+$('#agent-on').checked = store.get('agentOn', true);
+$('#agent-on').onchange = e => store.set('agentOn', e.target.checked);
+$('#wake').checked = store.get('wake', false);
+$('#wake').onchange = e => { store.set('wake', e.target.checked); applyWake(); };
+document.addEventListener('visibilitychange', applyWake);
+
+if (checkSupport()){ restore().then(refreshButtons); agentLoop(); applyWake(); }
+else { $('#btn-pair').disabled = true; $('#agent-on').disabled = true; }
+refreshState(); refreshSpools();
+setInterval(refreshState, 2000);
+setInterval(refreshSpools, 10000);
+</script>
+</body>
+</html>

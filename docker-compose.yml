@@ -1,0 +1,17 @@
+services:
+  spoolman-kitty:
+    build: .
+    container_name: spoolman-kitty
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # See .env for the values — docker compose loads it automatically.
+      SPOOLMAN_URL: "${SPOOLMAN_URL:-http://spoolman:8000}"
+      PUBLIC_SPOOLMAN_URL: "${PUBLIC_SPOOLMAN_URL:-http://spoolman:8000}"
+      QR_MODE: "${QR_MODE:-url}"
+      ENERGY: "${ENERGY:-65535}"
+      LABEL_HEIGHT_PX: "${LABEL_HEIGHT_PX:-240}"
+      FEED_PX: "${FEED_PX:-90}"
+      POLL_SECONDS: "${POLL_SECONDS:-5}"
+      TZ: "${TZ:-UTC}"
